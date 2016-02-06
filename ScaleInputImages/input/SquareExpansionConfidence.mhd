@@ -1,0 +1,15 @@
+ObjectType = Image
+NDims = 3
+BinaryData = True
+BinaryDataByteOrderMSB = False
+CompressedData = False
+TransformMatrix = 1 0 0 0 1 0 0 0 1
+Offset = 0 0 0
+CenterOfRotation = 0 0 0
+AnatomicalOrientation = RPI
+ElementSpacing = 1 1 1
+DimSize = 300 300 1
+ElementNumberOfChannels = 3
+ElementSize = 1 1 1
+ElementType = MET_FLOAT
+ElementDataFile = SquareExpansionConfidence.raw

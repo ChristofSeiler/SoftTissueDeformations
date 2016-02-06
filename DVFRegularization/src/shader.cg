@@ -1,0 +1,204 @@
+/* 
+ * energy function implemented as a shader
+ * channel r = x displacement
+ * channel g = y displacement
+ * channel b = label (Young's modulus)
+ */
+float4 energy_function(in float2 pos : TEXCOORD0,
+					   uniform samplerRECT image,
+					   uniform samplerRECT observation,
+					   uniform samplerRECT confidence,
+					   uniform float2 dimension) : COLOR
+{
+	// get neighbors
+	// top
+    float4 topPixel = texRECT(image, pos + float2(0, -1));
+	float4 topObs = texRECT(observation, pos + float2(0, -1));
+	// left
+    float4 leftPixel = texRECT(image, pos + float2(-1, 0));
+	float4 leftObs = texRECT(observation, pos + float2(-1, 0));
+	// right
+    float4 rightPixel = texRECT(image, pos + float2(1, 0));
+	float4 rightObs = texRECT(observation, pos + float2(1, 0));
+	// bottom
+    float4 bottomPixel = texRECT(image, pos + float2(0, 1));
+	float4 bottomObs = texRECT(observation, pos + float2(0, 1));
+	// center
+	float4 centerPixel = texRECT(image, pos);
+	float4 centerObs = texRECT(observation, pos);
+	// north east
+	float4 northEastPixel = texRECT(image, pos + float2(1, -1));
+	float4 northEastObs = texRECT(observation, pos + float2(1, -1));
+	// north west
+	float4 northWestPixel = texRECT(image, pos + float2(-1, -1));
+	float4 northWestObs = texRECT(observation, pos + float2(-1, -1));
+	// south west
+	float4 southWestPixel = texRECT(image, pos + float2(-1, 1));
+	float4 southWestObs = texRECT(observation, pos + float2(-1, 1));
+	// south east
+	float4 southEastPixel = texRECT(image, pos + float2(1, 1));
+	float4 southEastObs = texRECT(observation, pos  + float2(1, 1));
+
+	// get confidence values
+	float4 confidenceValue = texRECT(confidence, pos);
+
+	// set up boundary condition
+	// left
+	if(floor(pos.x) == 0) {
+		leftPixel.rg = centerPixel.xy;
+		leftObs.b = centerObs.b;
+	}
+	// right
+	if(floor(pos.x) == dimension.x-1) {
+		rightPixel.rg = centerPixel.xy;
+		rightObs.b = centerObs.b;
+	}
+	// bottom
+	if(floor(pos.y) == dimension.y-1) {
+		bottomPixel.rg = centerPixel.xy;
+		bottomObs.b = centerObs.b;
+	}
+	// top
+	if(floor(pos.y) == 0) {
+		topPixel.rg = centerPixel.xy;
+		topObs.b = centerObs.b;
+	}
+	// north east
+	if(floor(pos.y) == 0 && floor(pos.x) == dimension.x-1) {
+		northEastPixel.rg = centerPixel.xy;
+		northEastObs.b = centerObs.b;
+	}
+	// north west
+	if(floor(pos.y) == 0 && floor(pos.x) == 0) {
+		northWestPixel.rg = centerPixel.xy;
+		northWestObs.b = centerObs.b;
+	}
+	// south west
+	if(floor(pos.y) == dimension.y-1 && floor(pos.x) == 0) {
+		southWestPixel.rg = centerPixel.xy;
+		southWestObs.b = centerObs.b;
+	}
+	// south east
+	if(floor(pos.y) == dimension.y-1 && floor(pos.x) == dimension.x-1) {
+		southEastPixel.rg = centerPixel.xy;
+		southEastObs.b = centerObs.b;
+	}
+
+	// compute energies
+	// try new center values
+	// change
+	const float bigPrecalc = 1;
+	const float smallPrecalc = 0.1;
+	float2 newCenter[9];
+	newCenter[0] = float2(0,0);
+	newCenter[1] = float2(smallPrecalc,0);
+	newCenter[2] = float2(-smallPrecalc,0);
+	newCenter[3] = float2(bigPrecalc,0);
+	newCenter[4] = float2(-bigPrecalc,0);
+	newCenter[5] = float2(0,smallPrecalc);
+	newCenter[6] = float2(0,-smallPrecalc);
+	newCenter[7] = float2(0,bigPrecalc);
+	newCenter[8] = float2(0,-bigPrecalc);
+
+	float energy[9] = {0,0,0,0,0,0,0,0,0};
+	float ratio,delta1,delta2,diff;
+	float2 deltav1,deltav2,diffv;
+	for(int i = 0; i < 9; i++) {
+
+		// new guess
+		newCenter[i] = centerPixel.rg + newCenter[i];
+
+		// observation energy term
+
+		if(confidenceValue.r == 1)
+			energy[i] += 1000*abs(newCenter[i].r - centerObs.r);
+		if(confidenceValue.g == 1)
+			energy[i] += 1000*abs(newCenter[i].g - centerObs.g);
+
+		// a priori energy term
+		
+		// ratio in x left
+		ratio = centerObs.b/leftObs.b;
+		// first derivatives in x
+		delta1 = newCenter[i].x - rightPixel.r;
+		delta2 = leftPixel.r - newCenter[i].x;
+		// compare
+		diff = ratio * delta1 - delta2;
+		// update energy
+		energy[i] += diff*diff;
+
+		// ratio in x right
+		ratio = centerObs.b/rightObs.b;
+		// first derivatives in x
+		delta1 = newCenter[i].x - leftPixel.r;
+		delta2 = rightPixel.r - newCenter[i].x;
+		// compare
+		diff = ratio * delta1 - delta2;
+		// update energy
+		energy[i] += diff*diff;
+
+		// ratio in y top
+		ratio = centerObs.b/topObs.b;
+		// first derivatives in y
+		delta1 = newCenter[i].y - bottomPixel.g;
+		delta2 = topPixel.g - newCenter[i].y;
+		// compare
+		diff = ratio * delta1 - delta2;
+		// update energy
+		energy[i] += diff*diff;
+
+		// ratio in y bottom
+		ratio = centerObs.b/bottomObs.b;
+		// first derivatives in y
+		delta1 = newCenter[i].y - topPixel.g;
+		delta2 = bottomPixel.g - newCenter[i].y;
+		// compare
+		diff = ratio * delta1 - delta2;
+		// update energy
+		energy[i] += diff*diff;
+
+		// ratio in north east
+		ratio = centerObs.b/northEastObs.b;
+		deltav1 = newCenter[i].xy - southWestPixel.rg;
+		deltav2 = northEastPixel.xy - newCenter[i].xy;
+		diffv = ratio * deltav1 - deltav2;
+		energy[i] += dot(diffv,diffv);
+
+		// ratio in north west
+		ratio = centerObs.b/northWestObs.b;
+		deltav1 = newCenter[i].xy - southEastPixel.rg;
+		deltav2 = northWestPixel.xy - newCenter[i].xy;
+		diffv = ratio * deltav1 - deltav2;
+		energy[i] += dot(diffv,diffv);
+
+		// ratio in south west
+		ratio = centerObs.b/southWestObs.b;
+		deltav1 = newCenter[i].xy - northEastPixel.rg;
+		deltav2 = southWestPixel.xy - newCenter[i].xy;
+		diffv = ratio * deltav1 - deltav2;
+		energy[i] += dot(diffv,diffv);
+
+		// ratio in south east
+		ratio = centerObs.b/southEastObs.b;
+		deltav1 = newCenter[i].xy - northWestPixel.rg;
+		deltav2 = southEastPixel.xy - newCenter[i].xy;
+		diffv = ratio * deltav1 - deltav2;
+		energy[i] += dot(diffv,diffv);
+	}
+
+	// find minimum energy
+	float4 result;
+	result.rg = newCenter[0].rg;
+	result.ba = centerPixel.ba;
+
+	float minimumDistance = energy[0];
+	int classifiedPixelIndex = 0;
+	for(int classIndex = 1; classIndex < 9; classIndex++) {
+		if(energy[classIndex] < minimumDistance) {
+			minimumDistance = energy[classIndex];
+			result.rg = newCenter[classIndex].xy;
+		}
+	}
+
+	return result;
+}
